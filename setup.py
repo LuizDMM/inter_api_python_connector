@@ -40,7 +40,7 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Operating System :: OS Independent",
     ],
-    install_requires=[],
+    install_requires=["requests>=2.31.0"],
     extras_require={
         "dev": ["build>=1.0.3"],
     },
