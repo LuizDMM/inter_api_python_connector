@@ -46,6 +46,7 @@ class InterClient(API):
         valor: dict,
         chave: str,
         txid: Union[str, None] = None,
+        conta_corrente: Union[str, None] = None,
         **params,
     ):
         # Verifica se está autenticado, tenta re-autenticar (token expirado, por exemplo)
@@ -64,16 +65,18 @@ class InterClient(API):
 
         # Cria o payload para a requisição
         data = {"calendario": calendario, "valor": valor, "chave": chave, **params}
-
+        headers = self.__get_headers(conta_corrente)
         # Envia a requisição autenticada
         response = self.enviar_request_autenticada(
             self.__get_metodo_http_criar_pix(tipo_pix, txid),
             url=self.base_url + url_path,
             data=json.dumps(data),
+            headers=headers,
         )
+
         # Valida o Código HTTP
         if not response.ok:
-            self.__raise_erro_criar_pix(response)
+            self.__raise_erro_codigo_http_invalido(response)
 
         return response.json()
 
@@ -139,6 +142,13 @@ class InterClient(API):
         else:
             raise ValueError("Tipo de PIX inválido.")
 
+    def __get_headers(self, conta_corrente: Union[str, None]):
+        if conta_corrente:
+            headers = {"x-conta-corrente": conta_corrente}
+        else:
+            headers = None
+        return headers
+
     def __get_metodo_http_criar_pix(
         self, tipo_pix: Literal["imediato", "com_vencimento"], txid: Union[str, None]
     ):
@@ -149,7 +159,7 @@ class InterClient(API):
         else:
             return "PUT"
 
-    def __raise_erro_criar_pix(self, response: requests.Response):
+    def __raise_erro_codigo_http_invalido(self, response: requests.Response):
         if response.status_code == 429:
             raise RateLimitError(
                 "Você ultrapassou o rate limit. Tente novamente em alguns instantes."
@@ -159,7 +169,9 @@ class InterClient(API):
         elif response.status_code == 403 or response.status_code == 401:
             raise AuthenticationError(f"Error de autenticação: {response.text}")
         elif response.status_code == 404:
-            raise InvalidRequestError(f"Resquest inválida: {response.text}")
+            raise InvalidRequestError(
+                f"O objeto solicitado não foi encontrado: {response.text}"
+            )
         elif response.status_code == 500:
             raise APIError(f"Houve um erro no servidor do inter: {response.text}")
         elif response.status_code == 503:
@@ -172,8 +184,29 @@ class InterClient(API):
     def revisar_cobranca_pix(self, *args, **kwargs):
         raise NotImplementedError()
 
-    def consultar_cobranca_pix(self, *args, **kwargs):
-        raise NotImplementedError()
+    def consultar_cobranca_pix(
+        self, e2eId, conta_corrente: Union[str, None] = None, **params
+    ):
+        # Verifica se está autenticado, tenta re-autenticar (token expirado, por exemplo)
+        # se necessário.
+        self.__verificar_autenticacao()
+
+        # Caminho da URL
+        url_path = f"pix/v2/pix/{e2eId}"
+
+        # Criar o payload para a requisição
+        headers = self.__get_headers(conta_corrente)
+
+        # Envia a requisição autenticada
+        response = self.enviar_request_autenticada(
+            "GET", url=self.base_url + url_path, headers=headers
+        )
+
+        # Valida o código HTTP
+        if not response.ok:
+            self.__raise_erro_codigo_http_invalido(response)
+
+        return response.json()
 
     def consultar_list_cobrancas_pix(self, *args, **kwargs):
         raise NotImplementedError()
@@ -183,3 +216,31 @@ class InterClient(API):
 
     def consultar_devolucao_cobranca_pix(self, *args, **kwargs):
         raise NotImplementedError()
+
+    def criar_webhook_cobranca_pix(
+        self, chave: str, url: str, conta_corrente: Union[str, None] = None, **params
+    ):
+        # Verifica se está autenticado, tenta re-autenticar (token expirado, por exemplo)
+        # se necessário.
+        self.__verificar_autenticacao()
+
+        # Caminho da URL
+        url_path = f"pix/v2/webhook/{chave}"
+
+        # Cria o payload para a requisição
+        data = {"webhookUrl": url}
+        headers = self.__get_headers(conta_corrente)
+
+        # Envia a requisição autenticada
+        response = self.enviar_request_autenticada(
+            "PUT",
+            url=self.base_url + url_path,
+            data=json.dumps(data),
+            headers=headers,
+        )
+
+        # Valida o código HTTP
+        if not response.ok:
+            self.__raise_erro_codigo_http_invalido(response)
+
+        return True

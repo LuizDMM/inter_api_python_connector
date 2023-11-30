@@ -42,7 +42,7 @@ setup(
     ],
     install_requires=["requests>=2.31.0"],
     extras_require={
-        "dev": ["build>=1.0.3"],
+        "dev": ["build>=1.0.3", "sphinx"],
     },
     python_requires=">=3.8",
 )
