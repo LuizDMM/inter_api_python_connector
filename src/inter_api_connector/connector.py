@@ -1,3 +1,4 @@
+import datetime
 import decimal
 import json
 import logging
@@ -18,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 class InterClient(API):
+    def verificar_scope(self, scope: str):
+        return scope in self.scope
+
     # TODO: API Cobrança e Cobrança (Boleto com PIX)
     def emitir_boleto(self, *args, **kwargs):
         raise NotImplementedError()
@@ -38,6 +42,78 @@ class InterClient(API):
         raise NotImplementedError()
 
     # TODO: API Banking
+    def consultar_extrato(
+        self,
+        data_inicio: datetime.datetime,
+        data_fim: datetime.datetime,
+        tipo_extrato: Literal["padrao", "pdf", "enriquecido"] = "padrao",
+        conta_corrente: Union[str, None] = None,
+        **params,
+    ):
+        self.__verificar_autenticacao()
+
+        self.__validar_tipo_extrato(tipo_extrato)
+
+        url_path = self.__detectar_url_path_consultar_extrato(tipo_extrato)
+
+        query_params = {
+            "dataInicio": data_inicio.date().isoformat(),
+            "dataFim": data_fim.date().isoformat(),
+            **params,
+        }
+        headers = self.__get_headers(conta_corrente)
+
+        response = self.enviar_request_autenticada(
+            "GET", url=self.base_url + url_path, params=query_params, headers=headers
+        )
+
+        if not response.ok:
+            self.__raise_erro_codigo_http_invalido(response)
+
+        return response.json()
+
+    def __detectar_url_path_consultar_extrato(
+        self, tipo_extrato: Literal["padrao", "pdf", "enriquecido"]
+    ):
+        paths = {
+            "padrao": "banking/v2/extrato",
+            "pdf": "banking/v2/extrato/exportar",
+            "enriquecido": "banking/v2/extrato/completo",
+        }
+        return paths[tipo_extrato]
+
+    def __validar_tipo_extrato(self, tipo_extrato):
+        if not isinstance(tipo_extrato, str) or tipo_extrato not in (
+            "padrao",
+            "pdf",
+            "enriquecido",
+        ):
+            raise ValueError(
+                'O "tipo_extrato" deve ser "padrao", "pdf", ou "enriquecido", '
+                f"valor fornecido: {tipo_extrato}"
+            )
+
+    def consultar_saldo(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    def incluir_pagamento(
+        self, tipo: Literal["cod_barras", "darf", "pix"], *args, **kwargs
+    ):
+        raise NotImplementedError()
+
+    def consultar_pagamentos(
+        self, tipo: Literal["cod_barras", "darf", "pix"], *args, **kwargs
+    ):
+        raise NotImplementedError()
+
+    def incluir_pagamentos_em_lote(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    def consultar_pagamentos_em_lote(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    def cancelar_agendamento_pagamento(self, *args, **kwargs):
+        raise NotImplementedError()
 
     # TODO: API Pix
     def criar_cobranca_pix(
@@ -61,7 +137,7 @@ class InterClient(API):
         tipo_pix = self.__detectar_tipo_criar_pix(calendario, txid)
 
         # Determina o caminho da URL com base no tipo do PIX
-        url_path = self.__detectar_url_path_criar_pix(tipo_pix, txid)
+        url_path = self.__get_url_path_criar_pix(tipo_pix, txid)
 
         # Cria o payload para a requisição
         data = {"calendario": calendario, "valor": valor, "chave": chave, **params}
@@ -128,7 +204,7 @@ class InterClient(API):
 
         return "imediato" if "expiracao" in calendario else "com_vencimento"
 
-    def __detectar_url_path_criar_pix(
+    def __get_url_path_criar_pix(
         self, tipo_pix: Literal["imediato", "com_vencimento"], txid: Union[str, None]
     ):
         if tipo_pix == "com_vencimento":
@@ -208,8 +284,54 @@ class InterClient(API):
 
         return response.json()
 
-    def consultar_list_cobrancas_pix(self, *args, **kwargs):
-        raise NotImplementedError()
+    def consultar_cobrancas_pix_recebidas(
+        self,
+        inicio: datetime.datetime,
+        fim: datetime.datetime,
+        pagina_atual: int = 0,
+        itens_por_pagina: int = 100,
+        conta_corrente: Union[str, None] = None,
+        **params,
+    ):
+        # Verifica se está autenticado, tenta re-autenticar (token expirado, por exemplo)
+        # se necessário.
+        self.__verificar_autenticacao()
+
+        # Valida os tipos e se fim é maior que início
+        self.__valida_inicio_fim(inicio, fim)
+
+        # Caminho da URL
+        url_path = "pix/v2/pix"
+
+        # Criar dados para a requisição
+        queries = {
+            "inicio": inicio.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "fim": fim.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "paginacao.paginaAtual": pagina_atual,
+            "paginacao.itensPorPagina": itens_por_pagina,
+            **params,
+        }
+        headers = self.__get_headers(conta_corrente)
+
+        # Envia a requisição autenticada
+        response = self.enviar_request_autenticada(
+            "GET", url=self.base_url + url_path, headers=headers, params=queries
+        )
+
+        # Valida o código HTTP
+        if not response.ok:
+            self.__raise_erro_codigo_http_invalido(response)
+
+        return response.json()
+
+    def __valida_inicio_fim(inicio: datetime.datetime, fim: datetime.datetime):
+        if (
+            not all(isinstance(i, datetime.datetime) for i in (inicio, fim))
+            and fim > inicio
+        ):
+            raise ValueError(
+                '"inicio" deve ser menor que "fim" e ambos devem ser datetimes.'
+            )
 
     def devolver_cobranca_pix(self, *args, **kwargs):
         raise NotImplementedError()
@@ -217,30 +339,119 @@ class InterClient(API):
     def consultar_devolucao_cobranca_pix(self, *args, **kwargs):
         raise NotImplementedError()
 
-    def criar_webhook_cobranca_pix(
-        self, chave: str, url: str, conta_corrente: Union[str, None] = None, **params
+    # Interfaces dos Webhooks
+    def criar_webhook(
+        self,
+        api: Literal["banking", "cobranca", "cobranca_com_pix", "pix"],
+        webhook_url: str,
+        path_parameter: Union[str, None] = None,
+        conta_corrente: Union[str, None] = None,
     ):
-        # Verifica se está autenticado, tenta re-autenticar (token expirado, por exemplo)
-        # se necessário.
         self.__verificar_autenticacao()
 
-        # Caminho da URL
-        url_path = f"pix/v2/webhook/{chave}"
+        url_path = self.__get_url_path_criar_webhook(api, path_parameter)
 
-        # Cria o payload para a requisição
-        data = {"webhookUrl": url}
+        data = {"webhookUrl": webhook_url}
         headers = self.__get_headers(conta_corrente)
 
-        # Envia a requisição autenticada
         response = self.enviar_request_autenticada(
-            "PUT",
-            url=self.base_url + url_path,
-            data=json.dumps(data),
-            headers=headers,
+            "PUT", url=self.base_url + url_path, data=json.dumps(data), headers=headers
         )
 
-        # Valida o código HTTP
         if not response.ok:
             self.__raise_erro_codigo_http_invalido(response)
 
         return True
+
+    def __get_url_path_criar_webhook(self, api, path_parameter):
+        if api == "banking":
+            url_path = f"banking/v2/webhooks/{path_parameter}"
+        elif api == "cobranca":
+            url_path = "cobranca/v2/boletos/webhook"
+        elif api == "cobranca_com_pix":
+            url_path = "cobranca/v3/cobrancas/webhook"
+        elif api == "pix":
+            url_path = f"pix/v2/webhook/{path_parameter}"
+        return url_path
+
+    def obter_webhook_cadastrado(
+        self,
+        api: Literal["banking", "cobranca", "cobranca_com_pix", "pix"],
+        path_parameter: Union[str, None] = None,
+        conta_corrente: Union[str, None] = None,
+    ):
+        self.__verificar_autenticacao()
+
+        url_path = self.__get_url_path_criar_webhook(api, path_parameter)
+
+        headers = self.__get_headers(conta_corrente)
+
+        response = self.enviar_request_autenticada(
+            "GET", url=self.base_url + url_path, headers=headers
+        )
+
+        if not response.ok:
+            self.__raise_erro_codigo_http_invalido(response)
+
+        return response.json()
+
+    def excluir_webhook(
+        self,
+        api: Literal["banking", "cobranca", "cobranca_com_pix", "pix"],
+        path_parameter: Union[str, None] = None,
+        conta_corrente: Union[str, None] = None,
+    ):
+        self.__verificar_autenticacao()
+
+        url_path = self.__get_url_path_criar_webhook(api, path_parameter)
+
+        headers = self.__get_headers(conta_corrente)
+
+        response = self.enviar_request_autenticada(
+            "DELETE", url=self.base_url + url_path, headers=headers
+        )
+
+        if not response.ok:
+            self.__raise_erro_codigo_http_invalido(response)
+
+        return True
+
+    def consultar_callbacks_webhook(
+        self,
+        api: Literal["banking", "cobranca", "cobranca_com_pix", "pix"],
+        inicio: datetime.datetime,
+        fim: datetime.datetime,
+        conta_corrente: Union[str, None] = None,
+        **params,
+    ):
+        self.__verificar_autenticacao()
+
+        url_path = self.__get_url_path_consultar_callbacks(api)
+
+        headers = self.__get_headers(conta_corrente)
+
+        query_params = {
+            "dataHoraInicio": inicio.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "dataHoraFim": fim.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            **params,
+        }
+
+        response = self.enviar_request_autenticada(
+            "GET", url=self.base_url + url_path, headers=headers, params=query_params
+        )
+
+        if not response.ok:
+            self.__raise_erro_codigo_http_invalido(response)
+
+        return response.json()
+
+    def __get_url_path_consultar_callbacks(self, api):
+        if api == "banking":
+            url_path = "banking/v2/webhooks/pix-pagamento/callbacks"
+        elif api == "cobranca":
+            url_path = "cobranca/v2/boletos/webhook/callbacks"
+        elif api == "cobranca_com_pix":
+            url_path = "cobranca/v3/cobrancas/webhook/callbacks"
+        elif api == "pix":
+            url_path = "pix/v2/webhook/callbacks"
+        return url_path
