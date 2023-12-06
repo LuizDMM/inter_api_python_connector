@@ -23,17 +23,22 @@ class API(object):
         client_id: Union[str, None] = None,
         client_secret: Union[str, None] = None,
         base_url: Union[str, None] = None,
+        scope: Union[str, None] = None,
+        conta_corrente: Union[str, None] = None,
     ):
         self.base_url = base_url or "https://cdpj.partners.bancointer.com.br/"
 
         self.client_id = client_id
         self.client_secret = client_secret
-        self.scope = None
+        self.scope = scope
         self.access_token = None
         self.access_token_expiration = None
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json;charset=utf-8"})
         self.cert = certificado
+        self.conta_corrente = conta_corrente
+        if conta_corrente:
+            self.session.headers.update({"x-conta-corrente": conta_corrente})
         return
 
     @property
@@ -74,7 +79,10 @@ class API(object):
         return True
 
     def enviar_request_autenticada(
-        self, metodo_http, *args, **kwargs
+        self,
+        metodo_http: Literal["GET", "POST", "PUT", "PATCH", "DELETE"],
+        *args,
+        **kwargs,
     ) -> requests.Response:
         if (
             not self.access_token
