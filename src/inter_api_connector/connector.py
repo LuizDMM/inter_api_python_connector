@@ -257,8 +257,34 @@ class InterClient(API):
                 f"Erro genérico ao fazer a requisição: {response.status_code} - {response.text}"
             )
 
-    def revisar_cobranca_pix(self, *args, **kwargs):
-        raise NotImplementedError()
+    def revisar_cobranca_pix(
+        self,
+        tipo_cobranca: Literal["imediata", "com_vencimento"],
+        txid,
+        conta_corrente: Union[str, None] = None,
+        **params,
+    ):
+        self.__verificar_autenticacao()
+
+        if tipo_cobranca == "imediata":
+            url_path = f"pix/v2/cob/{txid}"
+        elif tipo_cobranca == "com_vencimento":
+            url_path = f"pix/v2/cobv/{txid}"
+
+        data = {**params}
+        headers = self.__get_headers(conta_corrente)
+
+        response = self.enviar_request_autenticada(
+            "PATCH",
+            url=self.base_url + url_path,
+            data=json.dumps(data),
+            headers=headers,
+        )
+
+        if not response.ok:
+            self.__raise_erro_codigo_http_invalido(response)
+
+        return response.json()
 
     def consultar_cobranca_pix(
         self, e2eId, conta_corrente: Union[str, None] = None, **params
@@ -333,11 +359,44 @@ class InterClient(API):
                 '"inicio" deve ser menor que "fim" e ambos devem ser datetimes.'
             )
 
-    def devolver_cobranca_pix(self, *args, **kwargs):
-        raise NotImplementedError()
+    def devolver_cobranca_pix(
+        self,
+        e2eid: str,
+        id_devolucao: str,
+        valor: str,
+        conta_corrente: Union[str, None] = None,
+    ):
+        self.__verificar_autenticacao()
 
-    def consultar_devolucao_cobranca_pix(self, *args, **kwargs):
-        raise NotImplementedError()
+        url_path = f"pix/v2/pix/{e2eid}/devolucao/{id_devolucao}"
+        data = {"valor": valor}
+        headers = self.__get_headers(conta_corrente)
+
+        response = self.enviar_request_autenticada(
+            "PUT", url=self.base_url + url_path, data=json.dumps(data), headers=headers
+        )
+
+        if not response.ok:
+            self.__raise_erro_codigo_http_invalido(response)
+
+        return response.json()
+
+    def consultar_devolucao_cobranca_pix(
+        self, e2eid: str, id_devolucao: str, conta_corrente: Union[str, None] = None
+    ):
+        self.__verificar_autenticacao()
+
+        url_path = f"pix/v2/pix/{e2eid}/devolucao/{id_devolucao}"
+        headers = self.__get_headers(conta_corrente)
+
+        response = self.enviar_request_autenticada(
+            "GET", url=self.base_url + url_path, headers=headers
+        )
+
+        if not response.ok:
+            self.__raise_erro_codigo_http_invalido(response)
+
+        return response.json()
 
     # Interfaces dos Webhooks
     def criar_webhook(
