@@ -350,7 +350,7 @@ class InterClient(API):
 
         return response.json()
 
-    def __valida_inicio_fim(inicio: datetime.datetime, fim: datetime.datetime):
+    def __valida_inicio_fim(self, inicio: datetime.datetime, fim: datetime.datetime):
         if (
             not all(isinstance(i, datetime.datetime) for i in (inicio, fim))
             and fim > inicio
