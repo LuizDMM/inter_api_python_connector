@@ -1,8 +1,11 @@
 import datetime
 import logging
-from typing import BinaryIO, Literal, Union
+from typing import Literal, Union
 
 import requests
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 
 from .error import (
     APIError,
@@ -11,6 +14,7 @@ from .error import (
     InvalidRequestError,
     RateLimitError,
 )
+from .patch import HTTPAdapter, patch_requests
 from .utils import mask_sensitive_data
 
 logger = logging.getLogger(__name__)
@@ -19,7 +23,8 @@ logger = logging.getLogger(__name__)
 class API(object):
     def __init__(
         self,
-        certificado: Union[tuple, BinaryIO, None] = None,
+        client_certificate: Union[bytes, None] = None,
+        client_key: Union[bytes, None] = None,
         client_id: Union[str, None] = None,
         client_secret: Union[str, None] = None,
         base_url: Union[str, None] = None,
@@ -27,15 +32,26 @@ class API(object):
         conta_corrente: Union[str, None] = None,
     ):
         self.base_url = base_url or "https://cdpj.partners.bancointer.com.br/"
-
         self.client_id = client_id
         self.client_secret = client_secret
         self.scope = scope
         self.access_token = None
         self.access_token_expiration = None
+        patch_requests(adapter=False)
         self.session = requests.Session()
+        self.session.mount("https://", HTTPAdapter())
         self.session.headers.update({"Content-Type": "application/json;charset=utf-8"})
-        self.cert = certificado
+        cert = (
+            x509.load_pem_x509_certificate(client_certificate, default_backend())
+            if client_certificate
+            else None
+        )
+        key = (
+            serialization.load_pem_private_key(client_key, None, default_backend())
+            if client_secret
+            else None
+        )
+        self.cert = (cert, key)
         self.conta_corrente = conta_corrente
         if conta_corrente:
             self.session.headers.update({"x-conta-corrente": conta_corrente})
@@ -53,7 +69,8 @@ class API(object):
         self,
         client_id: Union[str, None] = None,
         client_secret: Union[str, None] = None,
-        cert: Union[str, None] = None,
+        client_certificate: Union[bytes, None] = None,
+        client_key: Union[bytes, None] = None,
         scope: Union[str, None] = None,
     ):
         if not client_id and not self.client_id:
@@ -62,14 +79,27 @@ class API(object):
             raise ValueError(
                 'Você precisa fornecer o "client_secret" para se autenticar.'
             )
-        if not cert and not self.cert:
-            raise ValueError('Você precisa fornecer o "cert" para se autenticar.')
+        if (not client_secret or not client_certificate) and not self.cert:
+            raise ValueError(
+                'Você precisa fornecer o "client_certificate" e o "client_secret" para se autenticar.'
+            )
         if not scope and not self.scope:
             raise ValueError('Você precisa fornecer o "scope" para se autenticar.')
 
         self.client_id = client_id or self.client_id
         self.client_secret = client_secret or self.client_secret
-        self.cert = cert or self.cert
+        if client_certificate and client_key:
+            cert = (
+                x509.load_pem_x509_certificate(client_certificate, default_backend())
+                if client_certificate
+                else None
+            )
+            key = (
+                serialization.load_pem_private_key(client_key, None, default_backend())
+                if client_secret
+                else None
+            )
+            self.cert = (cert, key)
         self.scope = scope or self.scope
 
         oauth = self.__get_oauth_token()
