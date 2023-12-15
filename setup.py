@@ -32,6 +32,9 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/LuizDMM/api-inter-python-connector",
+    project_urls={
+        "Source": "https://github.com/LuizDMM/api-inter-python-connector",
+    },
     author="LuizDMM",
     author_email="luizdmmainart@gmail.com",
     license="MIT",
@@ -50,7 +53,12 @@ setup(
         "Operating System :: OS Independent",
         "Topic :: Office/Business :: Financial",
     ],
-    install_requires=["requests>=2.31.0"],
+    install_requires=[
+        "requests>=2.31.0",
+        "pyOpenSSL>=23.3.0",
+        "cryptography>=1.3.4",
+        "idna>=2.0",
+    ],
     extras_require={
         "dev": ["build>=1.0.3", "sphinx"],
     },
